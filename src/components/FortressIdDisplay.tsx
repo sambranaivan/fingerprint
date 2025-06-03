@@ -27,18 +27,20 @@ export function FortressIdDisplay() {
 
   useEffect(() => {
     const fetchData = async () => {
-      // Fetch Device Fingerprint and Generate Hash
+      // Fetch Device Fingerprint
       setLoadingFingerprint(true);
-      setLoadingHash(true);
       const fpData = getDeviceFingerprint();
       setFingerprint(fpData);
+      setLoadingFingerprint(false);
+
+      // Generate Hash (now async)
+      setLoadingHash(true);
       if (fpData) {
-        const hash = generateFingerprintHash(fpData);
+        const hash = await generateFingerprintHash(fpData);
         setFingerprintHash(hash);
       } else {
         setFingerprintHash(null);
       }
-      setLoadingFingerprint(false);
       setLoadingHash(false);
 
       // Fetch Public IP
@@ -83,7 +85,7 @@ export function FortressIdDisplay() {
             <p className="text-xl font-mono text-accent break-all">{fingerprintHash}</p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              {loadingFingerprint || loadingHash ? 'Generating...' : 'Unavailable'}
+              {loadingHash ? 'Generating...' : 'Unavailable'}
             </p>
           )}
         </InfoCard>

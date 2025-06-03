@@ -28,18 +28,28 @@ export interface DeviceFingerprint {
   DeviceMemory?: number; // In GB
 }
 
-// Internal helper function for hashing strings
-function hashString(str: string): string {
-  let hash = 0;
-  if (str.length === 0) {
+// Updated asynchronous hashString function
+async function hashString(str: string): Promise<string> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    // Fallback for environments without crypto.subtle (e.g., non-secure contexts or older Node.js)
+    // This is a simple non-cryptographic hash, not as robust as SHA-256
+    console.warn("crypto.subtle not available, using fallback hashing. Fingerprint hash will be less secure.");
+    let hash = 0;
+    if (str.length === 0) {
+      return hash.toString(16);
+    }
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
     return hash.toString(16);
   }
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash.toString(16);
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Helper to get Canvas Fingerprint
@@ -80,8 +90,17 @@ function getCanvasFingerprintInternal(): string | null {
     ctx.fillText("More text for fingerprinting.", 5, 50);
 
     const dataURL = canvas.toDataURL();
-    // Use the shared hashString function
-    return hashString(dataURL);
+    // For canvas fingerprint, we use a synchronous simple hash because crypto.subtle is async
+    // and getDeviceFingerprint needs to remain synchronous for now.
+    // A more robust solution might involve making getDeviceFingerprint async.
+    let hash = 0;
+    if (dataURL.length === 0) return hash.toString(16);
+    for (let i = 0; i < dataURL.length; i++) {
+      const char = dataURL.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString(16);
   } catch (e) {
     return null;
   }
@@ -116,6 +135,7 @@ function getWebGLInfoInternal(): WebGLInfo {
 
 // Helper for Screen Information
 function getScreenInfo(): { screenResolution: string; colorDepth: number } {
+  if (typeof window === 'undefined' || !window.screen) return { screenResolution: 'N/A', colorDepth: 0};
   return {
     screenResolution: `${window.screen.width}x${window.screen.height}`,
     colorDepth: window.screen.colorDepth,
@@ -124,6 +144,7 @@ function getScreenInfo(): { screenResolution: string; colorDepth: number } {
 
 // Helper for Timezone Information
 function getTimezoneInfo(): { timezone: string } {
+  if (typeof Intl === 'undefined' || !Intl.DateTimeFormat) return { timezone: 'N/A'};
   return {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
@@ -131,6 +152,7 @@ function getTimezoneInfo(): { timezone: string } {
 
 // Helper for Language Information
 function getLanguageInfo(): { language: string } {
+  if (typeof navigator === 'undefined' || !navigator.language) return { language: 'N/A'};
   return {
     language: navigator.language,
   };
@@ -138,6 +160,7 @@ function getLanguageInfo(): { language: string } {
 
 // Helper for Browser Information
 function getBrowserInfo(): { userAgent: string; platform: string; cookiesEnabled: boolean; doNotTrack: string | null; } {
+  if (typeof navigator === 'undefined') return { userAgent: 'N/A', platform: 'N/A', cookiesEnabled: false, doNotTrack: null};
   return {
     userAgent: navigator.userAgent,
     platform: navigator.platform,
@@ -148,6 +171,7 @@ function getBrowserInfo(): { userAgent: string; platform: string; cookiesEnabled
 
 // Helper for Hardware Information
 function getHardwareInfo(): { cpuCores?: number; deviceMemory?: number } {
+  if (typeof navigator === 'undefined') return { cpuCores: undefined, deviceMemory: undefined};
   return {
     cpuCores: navigator.hardwareConcurrency,
     deviceMemory: (navigator as any).deviceMemory,
@@ -192,7 +216,9 @@ export function getDeviceFingerprint(): DeviceFingerprint | null {
   };
 }
 
-export function generateFingerprintHash(fingerprint: DeviceFingerprint): string {
+// Updated to be an async function
+export async function generateFingerprintHash(fingerprint: DeviceFingerprint | null): Promise<string | null> {
+  if (!fingerprint) return null;
   // Define a specific order of keys to ensure consistent hash generation
   const orderedKeys: (keyof DeviceFingerprint)[] = [
     'ScreenResolution', 'ColorDepth', 'Timezone', 'Language',
@@ -209,5 +235,5 @@ export function generateFingerprintHash(fingerprint: DeviceFingerprint): string 
   });
 
   const fingerprintString = components.join('|');
-  return hashString(fingerprintString);
+  return await hashString(fingerprintString); // Await the async hashString
 }
