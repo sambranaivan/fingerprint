@@ -1,3 +1,4 @@
+
 export interface DeviceFingerprint {
   // Screen Information
   ScreenResolution: string;
@@ -25,6 +26,20 @@ export interface DeviceFingerprint {
   // Hardware Information
   CpuCores?: number;
   DeviceMemory?: number; // In GB
+}
+
+// Internal helper function for hashing strings
+function hashString(str: string): string {
+  let hash = 0;
+  if (str.length === 0) {
+    return hash.toString(16);
+  }
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(16);
 }
 
 // Helper to get Canvas Fingerprint
@@ -65,14 +80,8 @@ function getCanvasFingerprintInternal(): string | null {
     ctx.fillText("More text for fingerprinting.", 5, 50);
 
     const dataURL = canvas.toDataURL();
-
-    let hash = 0;
-    for (let i = 0; i < dataURL.length; i++) {
-      const char = dataURL.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; 
-    }
-    return hash.toString(16);
+    // Use the shared hashString function
+    return hashString(dataURL);
   } catch (e) {
     return null;
   }
@@ -181,4 +190,24 @@ export function getDeviceFingerprint(): DeviceFingerprint | null {
     CpuCores: hardwareInfo.cpuCores,
     DeviceMemory: hardwareInfo.deviceMemory,
   };
+}
+
+export function generateFingerprintHash(fingerprint: DeviceFingerprint): string {
+  // Define a specific order of keys to ensure consistent hash generation
+  const orderedKeys: (keyof DeviceFingerprint)[] = [
+    'ScreenResolution', 'ColorDepth', 'Timezone', 'Language',
+    'CanvasFingerprint', 'WebGLVendor', 'WebGLRenderer', 'UserAgent',
+    'Platform', 'CookiesEnabled', 'DoNotTrack', 'CpuCores', 'DeviceMemory'
+  ];
+
+  const components = orderedKeys.map(key => {
+    const value = fingerprint[key];
+    if (value === null || typeof value === 'undefined') {
+      return 'null'; // Consistent representation for null/undefined
+    }
+    return String(value);
+  });
+
+  const fingerprintString = components.join('|');
+  return hashString(fingerprintString);
 }
